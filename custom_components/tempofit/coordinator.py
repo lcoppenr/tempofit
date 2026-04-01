@@ -39,6 +39,9 @@ class TempoSensorCoordinator(DataUpdateCoordinator[dict]):
             data["all_time"] = await self.tempo.get_stats(
                 datetime(year=2000, day=1, month=1), datetime.now()
             )
+            data["streak"] = await self.tempo.get_streak()
+            data["weekly"] = await self.tempo.get_weekly_metrics()
+            data["profile"] = await self.tempo.profile()
         except (aiohttp.ClientResponseError, asyncio.TimeoutError) as ex:
             raise UpdateFailed("Error refreshing data") from ex
         return data

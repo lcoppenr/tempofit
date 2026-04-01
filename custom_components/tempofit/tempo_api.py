@@ -1,9 +1,8 @@
-import json
-
 import aiohttp
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
+
 WEB_ID = "8b9b4dbf-1ff8-4ad2-8520-07a1ac7c0f8a"
-from dataclasses import dataclass
 
 
 @dataclass
@@ -12,6 +11,15 @@ class AggregatedWorkoutMetrics:
     weightLifted: int
     caloriesBurned: int
     activeMinutes: int
+
+
+@dataclass
+class UserProfile:
+    subscription_type: str | None
+    active: bool
+    device_types: list = field(default_factory=list)
+
+
 def format_datetime_as_iso8601(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat(timespec="seconds")
 
@@ -41,13 +49,57 @@ class Tempo:
         self.last_refresh = datetime.now()
 
     async def me(self):
-        # Dict of exercise name to current weight
+        """Returns dict of exercise name → current weight recommendation."""
         resp = await self.session.get("https://api.trainwithpivot.com/v1/me", headers={"authorization": self.access_token})
         r = await resp.json()
         data = {}
         for exercise in r['data']["performance"]["exercises"].values():
             data[exercise["exercise_name"]] = exercise["progress"][-1]["weight"]["value"]
         return data
+
+    async def profile(self) -> UserProfile:
+        """Returns high-level account and subscription info."""
+        resp = await self.session.get("https://api.trainwithpivot.com/v1/me", headers={"authorization": self.access_token})
+        r = await resp.json()
+        d = r.get("data", {})
+        return UserProfile(
+            subscription_type=d.get("subscription_type"),
+            active=d.get("active", False),
+            device_types=d.get("device_types", []),
+        )
+
+    async def get_streak(self) -> int:
+        """Returns current workout streak (consecutive weeks with activity)."""
+        graphql_data = {
+            "query": "{ currentUser { streak } }"
+        }
+        resp = await self.session.post("https://api.trainwithpivot.com/v1/graphql", headers={"authorization": self.access_token}, json=graphql_data)
+        j = await resp.json()
+        return j["data"]["currentUser"].get("streak") or 0
+
+    async def get_weekly_metrics(self) -> AggregatedWorkoutMetrics:
+        """Returns aggregated workout metrics for the current week."""
+        graphql_data = {
+            "query": """
+            {
+                weeklyAchievementMetrics {
+                    numWorkouts
+                    weightLifted
+                    caloriesBurned
+                    activeMinutes
+                }
+            }
+            """
+        }
+        resp = await self.session.post("https://api.trainwithpivot.com/v1/graphql", headers={"authorization": self.access_token}, json=graphql_data)
+        j = await resp.json()
+        data = j["data"]["weeklyAchievementMetrics"]
+        return AggregatedWorkoutMetrics(
+            numWorkouts=data["numWorkouts"],
+            weightLifted=data["weightLifted"],
+            caloriesBurned=data["caloriesBurned"],
+            activeMinutes=data["activeMinutes"],
+        )
 
     async def refresh(self):
         if (datetime.now() - self.last_refresh).total_seconds() > self.access_token_expiry / 2:
