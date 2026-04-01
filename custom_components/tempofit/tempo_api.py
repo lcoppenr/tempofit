@@ -61,11 +61,11 @@ class Tempo:
         """Returns high-level account and subscription info."""
         resp = await self.session.get("https://api.trainwithpivot.com/v1/me", headers={"authorization": self.access_token})
         r = await resp.json()
-        d = r.get("data", {})
+        d = r.get("data") or {}
         return UserProfile(
             subscription_type=d.get("subscription_type"),
             active=d.get("active", False),
-            device_types=d.get("device_types", []),
+            device_types=d.get("device_types") or [],
         )
 
     async def get_streak(self) -> int:
@@ -75,7 +75,8 @@ class Tempo:
         }
         resp = await self.session.post("https://api.trainwithpivot.com/v1/graphql", headers={"authorization": self.access_token}, json=graphql_data)
         j = await resp.json()
-        return j["data"]["currentUser"].get("streak") or 0
+        user = (j.get("data") or {}).get("currentUser") or {}
+        return user.get("streak") or 0
 
     async def get_weekly_metrics(self) -> AggregatedWorkoutMetrics:
         """Returns aggregated workout metrics for the current week."""
@@ -93,12 +94,12 @@ class Tempo:
         }
         resp = await self.session.post("https://api.trainwithpivot.com/v1/graphql", headers={"authorization": self.access_token}, json=graphql_data)
         j = await resp.json()
-        data = j["data"]["weeklyAchievementMetrics"]
+        data = (j.get("data") or {}).get("weeklyAchievementMetrics") or {}
         return AggregatedWorkoutMetrics(
-            numWorkouts=data["numWorkouts"],
-            weightLifted=data["weightLifted"],
-            caloriesBurned=data["caloriesBurned"],
-            activeMinutes=data["activeMinutes"],
+            numWorkouts=data.get("numWorkouts") or 0,
+            weightLifted=data.get("weightLifted") or 0,
+            caloriesBurned=data.get("caloriesBurned") or 0,
+            activeMinutes=data.get("activeMinutes") or 0,
         )
 
     async def refresh(self):
